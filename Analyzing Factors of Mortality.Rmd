@@ -1,0 +1,460 @@
+---
+title: 'Analyzing Factors of Mortality'
+author: "Sam Schultz & Tenju Cuddihy"
+date: "12/9/2022"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center")
+
+# Load the tidyverse, gt, and corrplot packages
+pacman::p_load(tidyverse, gt, corrplot, rpart, rpart.plot, MASS)
+
+#Set graph theme
+theme_set(theme_bw())
+
+#Read in life expectancy data set
+le <- read.csv("P_Life_Expectancy_Data.csv")
+
+#Make column names
+le <- le %>% filter(X.1 == "Developing" | X.1 == "Developed") %>% rename(Country = https...www.kaggle.com.kumarajarshi.life.expectancy.who, Year = X, Status = X.1, LifeExp = X.2, AdultMort = X.3, InfantDeaths = X.4, Alcohol = X.5, HealthExpend = X.6, Hepatitis = X.7, Measles = X.8, BMI = X.9, Under5 = X.10, Polio = X.11, TotalExpend = X.12, Diphtheria = X.13, HIV = X.14, GDP = X.15, Population = X.16, thin1to19 = X.17, thin5to9 = X.18, IncomeComp = X.19, Schooling = X.20)
+
+#Change numeric columns to numeric values
+numer <- c(4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22)
+le[ , numer] <- apply(le[ , numer], 2, function(x) as.numeric(as.character(x)))
+```
+
+
+## Introduction
+The data set we are analyzing was collected by the Global Health Observatory (GHO), a branch of the World Health Organization (WHO), which keeps track of worldwide health status and health factors. The data sets that the GHO oversees is made available to the public to assist with health data analysis for different countries. The data set contains information for 193 countries, the health factors being collected from the WHO's website and the economic factors being collected from the United Nations website. 15 years of data is contained within the data set spanning the years 2000 - 2015 and covers health and economic factors that have the most effect on life expectancy. 
+
+It is unlikely that there is sampling bias within the data set as the data is collected from the WHO and the United Nations which are respected international organizations with broad reach. The data set is an observational study as the data is collected from observing patterns and trends across the world without actively introducing stimuli to analyze. This data set is incredibly interesting and important as it pertains to how certain factors effect life expectancy and can give very valuable insight into which factors most effect life expectancy and how life expectancy has changed over 15 years in any given region and across the globe.
+
+In terms of data cleaning, the link at the top of the data set needed to be removed, descriptive columns names needed to be added, and numeric columns needed to be converted to numeric values to be properly handled by the R code.
+
+The age at which people die is variable depending on certain factors in one's life. One of the most important factors in determining how long a person might live is examining which country they reside in. It is also important to examine which factors heavily influence life expectancy such as diseases, wealth, education, and many other characteristics.
+
+Afghanistan has experienced intense war and violence right around the turn of the century where the data collection begins. We would like to examine life expectancy changes in Afghanistan over a 15 year period to examine if there has been and improvement or decrease in life expectancy.
+
+We are also interested in examining the correlation between Life Expectancy and Body Mass Index (BMI) to see if obesity or body weight have a relation with life expectancy.
+
+\newpage
+
+### Data Description
+The data collected is information on life expectancy and health factors across 193 countries from the Global Health Observatory (GHO) and the the World Health Organization (WHO). The data spans the years 2000-2015 and is meant to represent the more critical health factors that threaten life expectancy.
+
+To get an idea what our data looks like here are 10 random countries displayed below.
+
+
+```{r Q1}
+#Group the data by developed or developing status to give a more diverse peek into the data
+le %>% group_by(Status) %>% 
+  
+  #Examine 5 random countries from each group status
+  slice_sample(n = 5) %>% 
+  
+  #Remove the grouping for further unbiased examination
+  ungroup()
+
+```
+
+The 22 variables are:
+
+1. **Country**: One of 193 countries where data was collected
+
+2. **Year**: Year between 2000 and 2015
+
+3. **Status**: Developed or Developing status
+
+4. **Life Expectancy**: Life Expectancy in age
+
+5. **Adult Mortality**: Adult Mortality Rates of both sexes
+
+6. **Infant Deaths**: Number of Infant Deaths per 1000 population
+
+7. **Alcohol**: Alcohol per capita consumption
+
+8. **HealthExpend**: Expenditure on health as a percentage of Gross Domestic Product per capita
+
+9. **Hepatitis**: Hepatitis B immunization coverage among 1-year-olds
+
+10. **Measles**: Number of reported measles cases per 1000 population
+
+11. **BMI**: Average Body Mass Index of entire population
+
+12. **Under-Five Deaths**: Number of under-five deaths per 1000 population
+
+13. **Polio**: Polio (Pol3) immunization coverage among 1-year-olds as a percentage
+
+14. **Total Expenditure**: General government expenditure on health as a percentage of total government expenditure
+
+15. **Diphtheria**: Diphtheria tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds as a percentage
+
+16. **HIV/AIDS**: Deaths per 1,000 live births HIV/AIDS
+
+17. **GDP**: Gross Domestic Product per capita in USD
+
+18. **Population**: Population of the country
+
+19. **Thinness 1-19**: Prevalence of thinness among children and adolescents for Age 10 to 19 as a percentage
+
+20. **Thinness 5-9**: Prevalence of thinness among children for Age 5 to as a percentage
+
+21. **Income Composition of Resources**: Human Development Index in terms of income composition of resources from 0 to 1
+
+22. **Schooling**: Number of years of Schooling
+
+\newpage
+
+Here is a chart showing some of the key information for the first 15 countries alphabetically.
+```{r Q2}
+#Take the first 15 data entries from the year 2013
+head(le %>% filter(Year == "2013" & Population>0), 15) %>% 
+  
+  #Shrink the data set down to examine only some specific key information
+  summarize(Country=Country,Status=Status, LifeExpectancy=LifeExp, HealthExpenditures=HealthExpend, BMI=BMI, GDP=GDP, Population=Population, SchoolingLevel=Schooling) %>% 
+  
+  #Add nice table formatting to the data in question
+  gt() %>% tab_options(table.font.size = pct(85))
+
+```
+
+\newpage
+
+### Data Visualizations
+The question we are mainly looking to answer is has life expectancy in Afghanistan increased over the years 2000 - 2015?
+
+
+
+```{r Q3}
+#Graph year and life expectancy for the country of Afghanistan
+ggplot(le %>% filter(Country == "Afghanistan"), aes(x = Year, y = LifeExp)) + 
+  
+  #Make the graph a bar graph with the bars of color navy blue
+  geom_bar(stat = "identity", fill="navyblue") + 
+  
+  #Add better formatting for the axes and title
+  labs(title="Life Expectancy in Afghanistan", x="Year",y="Life Expectancy (age)") + 
+  
+  #Make the graph fit up to the edges of the plot
+  guides(fill = "none") + 
+  
+  #Add line labels on the y-axis in increments of 5
+  scale_y_continuous(breaks=c(55, 60, 65)) + 
+  
+  #Zoom in on the data to better see the difference over the years
+  coord_cartesian(ylim = c(54, 65))
+
+```
+
+There is a clear increase in life expectancy in Afghanistan over the years 2000 - 2015 illustrated by the above bar graph. Almost every year brought a higher life expectancy as time progressed which answered the question we posed, asking if within the time span of 2000 - 2015 did the life expectancy in Afghanistan increase overall? And the answer to the question proved to be yes as the bar graph clearly displays an upward trend as the years on the x-axis increase.
+
+We are also interested in how the number of infant deaths has changed over the years 2000 - 2015 in Afghanistan as military involvement has changed over this time period.
+
+```{r Q4}
+#Graph year and infant deaths for the country of Afghanistan
+ggplot(le %>% filter(Country == "Afghanistan"), aes(x = Year, y = InfantDeaths)) + 
+  
+  #Make the graph a bar graph with the bars of color navy blue
+  geom_bar(stat = "identity", fill="navyblue") + 
+  
+  #Add better formatting for the axes and title
+  labs(title="Infant Deaths in Afghanistan", x="Year",y="Infant Deaths") + 
+  
+  #Make the graph fit up to the edges of the plot
+  guides(fill = "none") + 
+  
+  #Add line labels on the y-axis in increments of 5
+  scale_y_continuous(breaks=c(65, 70, 75, 80, 85)) + 
+  
+  #Zoom in on the data to better see the difference over the years
+  coord_cartesian(ylim = c(62, 88))
+
+```
+There is a clear decrease in infant deaths in Afghanistan over the years 2000 - 2015 illustrated by the above bar graph. Almost every year brought a lower infant death rate as time progressed which answered the question we posed, asking if within the time span of 2000 - 2015 did the number of infant deaths in Afghanistan decrease overall? And the answer to the question proved to be yes as the bar graph clearly displays an downward trend as the years on the x-axis increase.
+
+Another question we wanted to answer with the data set was is there any correlation between Body Mass Index (BMI) and life expectancy?
+
+We mapped a scatter plot and a line of best fit to find out the answer to the posed question.
+
+```{r Q5}
+#Graph life expectancy and BMI, removing any missing values that may be present
+ggplot(le %>% filter(!is.na(BMI) & !is.na(LifeExp)), aes(x = BMI, y = LifeExp)) + 
+  
+  #Make the graph a scatter plot
+  geom_point() + 
+  
+  #Add better formatting for the axes and title
+  labs(title="Life Expectancy Based on BMI", x="BMI",y="Life Expectancy (age)") + 
+  
+  #Add line of best fit to illustrate relationship
+  geom_smooth(method=lm, se=FALSE, formula = y ~ x)
+
+```
+Our line of best fit indicates there is in fact a correlation between BMI and life expectancy.
+
+We can see a positive linear correlation between BMI and life expectancy illustrated by the points and line of best fit. This would indicate that the higher the BMI average of a country, the higher the life expectancy.
+
+A conclusion we could draw from this is countries that are more well fed and have better access to food will likely have a higher life expectancy.
+
+Another relationship we are interested in investigating is how life expectancy is influenced by thinness over the ages of 1 - 19 years old.
+
+```{r Q6}
+#Graph life expectancy and thinness, removing any missing values that may be present
+ggplot(le %>% filter(!is.na(thin1to19) & !is.na(LifeExp)), aes(x = thin1to19, y = LifeExp)) + 
+  
+  #Make the graph a scatter plot
+  geom_point() + 
+  
+  #Add better formatting for the axes and title
+  labs(title = "Life Expectancy Based on Thinness Ages 1 - 19", x="Thinness", y="Life Expectancy (age)") + 
+  
+  #Add line of best fit to illustrate relationship
+  geom_smooth(method=lm, se=FALSE, formula = y ~ x) + 
+  
+  #Make the x-axis labels appear as percentages
+  scale_x_continuous(labels = scales::percent_format(scale = 1))
+
+```
+
+Our line of best fit indicates there is in fact a correlation between thinness and life expectancy.
+
+We can see a negative linear correlation between thinness and life expectancy illustrated by the points and line of best fit. This would indicate that the higher the rate of thinness of a country, the lower the life expectancy.
+
+This supports our conclusion drawn from the last graph that countries that are more well fed and have better access to food will likely have a higher life expectancy.
+
+
+
+
+To delve deeper into the underlying causes of these relationships, we made a correlation matrix between life expectancy, the previously investigated factors (BMI and infant mortality), as well as those factors that we believe would shed more light on underlying causality, those being the following: adult mortality, health expenditure, GDP, measles, and schooling.
+
+```{r Q7}
+#Create a correlation matrix for the country of Afghanistan
+corr <- cor(le[1:16,c(4,5,6,8,11,10,17,22)], use = "complete.obs")
+
+#Plot the correlation matrix visually
+corrplot(corr)
+
+```
+
+In this figure, the size of the circle indicates the strength of the correlation and the color indicates whether the correlation is positive or inverse, the red signifying and inverse relationship and the blue representing a positive one. As illustrated by the earlier figures, this matrix shows a strong inverse relationship between infant mortality and life expectancy and a strong positive correlation between life expectancy and BMI. Another interesting metric is the lack of relationship between adult mortality and life expectancy, which indicates that the primary influence on life expectancy is child mortality. 
+
+To further investigate these data, it is important to consider the Afghanistan's economics and the prevalence of measles in the country. The figure illustrates a weaker but tangible relationship between the prevalence of measles and both BMI and life expectancy, and a similar but a positive correlation with infant deaths. This suggests that the prevalence of measles may partially explain the infant mortality and BMI issue. There is also a strong positive correlation for GDP, health expenditure (though this looks like health expenditure as a result of GDP), and schooling with life expectancy, while those factors also have a smaller negative relationship with measles. These results together seem to illustrate how wealth affects education and resources which influences the efficacy of the Afghan health system in the face of measles, which is supported by the following two figures. However, the relative lack of correlative strength between the prevalence of measles and the other factors indicate that there are some lurking factors aside from measles that are affecting child mortality rates, which is expected as this is a complex system, however, the data suggest that measles is a somewhat influential explanatory factor.
+
+\newpage
+
+## Machine Learning Methods
+
+To better understand the correlation between the factors in the data frame for all of the countries in the data set, we ran a multiple linear regression model on all of the numerical components of the data set.  
+
+```{r Q8}
+
+#New data frame with no missing values
+le1 <- na.omit(le)
+
+#Choose on quantitaive variables
+le1 <- le1[,4:22]
+
+#Create a linear model of the data
+le_lm <- lm(formula = LifeExp ~ ., data = le1)
+
+#Check VIF of model
+regclass::VIF(le_lm)
+
+#Trim columns with colinearity
+le1 <- le1[,c(1,2,4,6,7,8,10,11,12,13,15,18,19)]
+
+#New model with trimmed variables
+le_lm <- lm(formula = LifeExp ~ ., data = le1)
+
+#Check VIF of new model
+regclass::VIF(le_lm)
+
+#Graph life expectancy against all chosen variables
+le1 %>% pivot_longer(cols = AdultMort:Schooling, names_to = "stat", values_to = "score") %>% ggplot(mapping = aes(x = score, y = LifeExp)) + 
+  geom_point() + 
+  geom_smooth(se = F, method = "loess", formula = y~x) + 
+  facet_wrap(facets = ~ stat, scales = "free_x", ncol = 5) + 
+  labs(x = NULL, y = "Life Expectancy")
+
+#Create cross validation function
+lm_cv <- function(lm_formula, lm_data){
+  
+  #Create a data frame to store the models data
+  data_cv <- data.frame(lm_data, y_hat = rep(-100, nrow(lm_data)))
+  
+  #Loop through model's data
+  for (i in 1:nrow(lm_data)){
+    loop_lm <- lm(formula = lm_formula,
+                  data = lm_data[-i,])
+    
+    data_cv[i, "y_hat"] <- predict(object = loop_lm,
+                                   newdata = lm_data[i,])
+  }
+  
+  #Return cross validated data
+  return(data_cv)
+}
+
+#Perform cross validation on model
+le2 <- lm_cv(lm_data = le1, lm_formula = LifeExp ~ .)
+
+#Create new model based on the cross validated data
+le_lm1 <- lm(formula = LifeExp ~ ., data = le2)
+
+#Create an MAE function
+MAE <- function(actual, predicted){
+  return(abs(actual - predicted) %>% mean())
+}
+
+# R-squared and MAE
+le2 %>% 
+  summarize(R2 = cor(LifeExp, y_hat)^2, 
+            mae = MAE(actual = LifeExp, 
+                      predicted = y_hat), 
+            mae_improve = 1 - mae/MAE(actual = LifeExp, 
+                                      predicted = mean(LifeExp)))
+
+
+```
+
+
+We began by running VIF values for each of the variables which exposed multicolinearity issues between infant deaths and under 5 (which makes sense because they are a similar metric measuring infant mortality), Health expenditure and GDP (which also makes sense because health expenditure is dependent on GDP), and thin 1-19 and thin 5-9 (where thin 1-19 encapsulates thin 5-9). The rest of the VIF numbers were under 5 and we therefore concluded that the rest of the factors do not exhibit multicolinearity issues. We then ran a new VIF excluding the aforementioned problematic factors and made a scatter plot matrix with the new list of factors. The amended data frame was then used to attain an R-squared value, as well as MAE and MAE improve values. The R-squared value illustrates that the model was about 81% accurate in predicting life expectancy based on the list of factors, and the MAE value shows that predictions for life expectancy tend to be off by about under 3 years on average. Below, we plotted y-hat against the true life expectancy values and the trend line that this correlation follows. We also plotted the studentized (jackknife) residuals below, and they appear to follow a normal curve with a slight left-skew.
+
+
+```{r Q9}
+
+# R-squared plot: y vs y_hat
+ggplot(data = le2, mapping = aes(x = y_hat, y = LifeExp)) + 
+  geom_point() + 
+  geom_smooth(se = F, formula = y~x, method = "lm") + 
+  labs(x = "Predicted Life Expectancy", y = "Life Expectancy")
+
+```
+
+```{r Q10}
+
+#Store jackknife residuals
+jack <- rstudent(le_lm)
+
+#Store models predicted values
+pred <- predict(le_lm)
+
+#Create a data frame to store both jackknife residuals and predicted values
+jackvpred <- data.frame(jack, pred)
+
+#Plot jackknife residuals vs predicted values
+ggplot(jackvpred, aes(x = pred, y = jack)) +
+  geom_point() + 
+  geom_hline(yintercept=0, color = "red") + 
+  labs(x = "Predicted life expectancy", y = "Jackknife Residuals")
+
+#Store the density of the jackknife residuals
+den <- density(jack)
+
+#Plot the jackknife residuals density
+plot(den, xlab = "Jackknife Residuals", ylab = "density", main = "")
+
+#Color the area underneath the density plot orange
+polygon(den, col = "orange")
+
+
+```
+
+We also made a regression tree both to have another model for predicting life expectancy and also as a means of visualizing the model and thus a means of understanding predictive factors of life expectancy. For simplicity, we selected the following 4 factors to predict life expectancy: measles, total expenditure, HIV, and population. Our pruned tree resulted in 16 splits with a CP of about 0.004. As expected, the tree shows that high HIV and measles rates had a negative impact on life expectancy and that a higher total expenditure and higher country populations were correlated with longer life expectancy. The leftmost node shows that for data points where HIV rates are greater than or equal to 16.25/1000 people (which occurs just over 3% of the time in the data set), the tree bins these cases into a node that predicts a life expectancy of about 48.7 years. The rightmost node shows that when government expenditure on health is high, HIV rates are low, and measles rates are below 0.15/1000 people (which is the case almost 20% of the time in this data set), the tree bins these cases into a node that predicts a life expectancy of about 77.5 years. The next figure below is a plot of the life expectancies predicted by the tree against the actual life expectancies in the data set. The data points form lines which are a result of how the predicted life expectancies from the regression tree are binned predictions contingent on the number of splits in the regression tree. Like the multiple linear regression model, the predictions follow the expected positive trend but the predictions made by the tree deviate from the trend more than MLR modeling methods, which is to be expected. Ultimately, according to the R-squared value, this tree was still about 76% accurate with the MAE value illustrating that predictions for life expectancy tended to be off by a bit over 3 years on average.
+
+```{r Q11}
+
+#Select the four variables with the lowest VIF
+le3 <- le2[,c(1,5,8,10,11)]
+
+# Fully grow the tree:
+le_trees <- 
+  rpart(formula = LifeExp ~ .,
+        data = le3,
+        method = "anova",
+        minsplit = 2,
+        minbucket = 1,
+        cp = -1)
+
+
+# Find the xerror cutoff
+le_trees$cptable %>% 
+  data.frame() %>% 
+  slice_min(xerror, n = 1, with_ties = F) %>% 
+  mutate(xcutoff = xerror + xstd) %>% 
+  pull(xcutoff) -> xcutoff
+
+
+# Finding the row with the xerror_cutoff:
+le_trees$cptable %>% 
+  data.frame() %>% 
+  filter(xerror < xcutoff & nsplit < 20)
+
+le_trees$cptable %>% 
+  data.frame() %>% 
+  filter(xerror < xcutoff) %>%
+  slice(1) %>%
+  pull(CP) -> cp_prune
+
+# Prune the tree below
+le_pruned <- 
+  prune(tree = le_trees,
+        cp = cp_prune)
+
+
+# Display the tree
+rpart.plot(le_pruned, 
+           digits = 4,
+           fallen.leaves = TRUE,
+           type = 5, 
+           extra = 101,
+           box.palette = 'BlGnYl',
+           shadow.col = 'gray')
+
+
+```
+
+```{r Q12}
+
+#create a table of the regression tree and the predicted tree values
+le4 <- 
+  tibble(le3, le_pred = predict(object = le_pruned))
+
+# Create the R^2 plot for the regression tree
+ggplot(data = le4, mapping = aes(x = le_pred, y = LifeExp)) + 
+  geom_point(aes(color = le_pred)) +
+  scale_color_viridis_c() + 
+  labs(x = "Predicted Life Expectancy", y = "Life Expectancy") + 
+  theme(legend.position = "none")
+
+#Display R^2, MAE, and improved MAE values
+le4 %>% 
+  summarize(R2 = cor(LifeExp, le_pred)^2, 
+            mae = MAE(actual = LifeExp, 
+                      predicted = le_pred), 
+            mae_improve = 1 - mae/MAE(actual = LifeExp, 
+                                      predicted = mean(LifeExp)))
+
+```
+
+\newpage
+
+## Conclusions
+The questions we sought to answer through our data visualization have had pretty strong answers that we can see represented in our graphs. 
+
+Our first question inquiring how life expectancy may have changed in Afghanistan in the years 2000 - 2015 as the war on terror in the region lessened was answered very definitively by our bar graph which represents a clear upward trend with almost every subsequent year experiencing a higher life expectancy than the last. This was the result we expected as we inferred as fighting and warfare died down in the region, less soldiers and civilians would be dying due to conflict. 
+
+The next question we wanted to examine in the same country was how the number of infant deaths would have changed over this time period. We predicted a the number of infant deaths would decrease with similar reasoning to the previous question that less warfare would result in less deaths but we were less sure compared to the last question as we mostly expected the life expectancy and death to be affected by adult soldiers who died fighting on their soil. We were again proved correct through the visualization of the second bar graph which display a clear downward trend with every year from 2004 - 2015 experiencing lower infant deaths than the last. 
+
+We next wanted to examine global relationships so we looked at the relationship between life expectancy and BMI to see if our inference that countries with higher BMI would have greater life expectancy as they would likely have better access to food. This hypothesis was backed up by the scatter plot which shows a clear positive linear correlation between BMI and life expectancy. 
+
+In a similar vein we were also interested in the prevalence of thinness of people ages 1 - 19 had an effect on life expectancy, we expected an opposite trend compared to the last graph as thinness would represent how little access to food certain countries would have. Once again our prediction proved to be accurate as a clear linear negative correlation can be seen in the scatter plot comparing thinness and life expectancy. 
+
+After these conclusions we were interested in the factors that would have the most affect on life expectancy so we graphed a correlation matrix, in which the results seemed to suggest the largest determining factors in life expectancy is infant deaths, BMI, and schooling.
+
+## Limitations / Recommendations
+An unfortunate limitation we came across while examining our data set was the fact that the data only covers the years 2000 - 2015, nothing before or after. This limits the data to a very specific point in time and it would be far more accurate and interesting to examine these many factors over a longer stretch of time. Additionally, there were some missing values within the data set that were a result of small countries with little infrastructure that made it hard/impossible to collect data from those regions for certain variables during the given time period. If we had access to the information pertaining to these variables in sparsely populated regions it would make the examination of then the data more conclusive than what we were able to glean. For further research of the data set we recommend examining the strongest correlations first and building data visualizations of the most influential factors for the variable that it is the intent to examine and draw conclusions from.
+
