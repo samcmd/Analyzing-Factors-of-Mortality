@@ -2,7 +2,7 @@
 Project in R analyzing and visualizing certain factors and how they effect lifespan. Collaborated on the project with Tenju Cuddihy.
 
 
-## Introduction
+## Overview
 The data set we are analyzing was collected by the Global Health Observatory (GHO), a branch of the World Health Organization (WHO), which keeps track of worldwide health status and health factors. The data sets that the GHO oversees is made available to the public to assist with health data analysis for different countries. The data set contains information for 193 countries, the health factors being collected from the WHO’s website and the economic factors being collected from the United Nations website. 15 years of data is contained within the data set spanning the years 2000 - 2015 and covers health and economic factors that have the most effect on life expectancy.
 
 It is unlikely that there is sampling bias within the data set as the data is collected from the WHO and the United Nations which are respected international organizations with broad reach. The data set is an observational study as the data is collected from observing patterns and trends across the world without actively introducing stimuli to analyze. This data set is incredibly interesting and important as it pertains to how certain factors effect life expectancy and can give very valuable insight into which factors most effect life expectancy and how life expectancy has changed over 15 years in any given region and across the globe.
